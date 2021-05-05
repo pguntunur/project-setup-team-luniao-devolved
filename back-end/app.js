@@ -109,7 +109,7 @@ app.post("/api/recommendations", (req, res) => {
 
         var options = {
             method: 'GET',
-            url: 'https://skyscanner-skyscanner-flight-search-v1.p.rapidapi.com/apiservices/browseroutes/v1.0/US/USD/en-US/JFK-sky/LHR-sky/' + recForm['date'],
+            url: 'https://skyscanner-skyscanner-flight-search-v1.p.rapidapi.com/apiservices/browseroutes/v1.0/US/USD/en-US/' + recForm['from'] + '-sky/' + recForm['to'] + '-sky/' + recForm['date'],
             headers: {
                 'x-rapidapi-key': '48b6700027mshf2353e12af2853bp1e9d9fjsn189a7bf51c0b',
                 'x-rapidapi-host': 'skyscanner-skyscanner-flight-search-v1.p.rapidapi.com'
@@ -124,12 +124,15 @@ app.post("/api/recommendations", (req, res) => {
             for (const item in resultsJSON['Quotes']) {
                 let newResult = new Object();
                 newResult.date = resultsJSON['Quotes'][item]["OutboundLeg"].DepartureDate.slice(0, 10);
-                newResult.from_country = resultsJSON['Places'][0].IataCode;
-                newResult.to_country = resultsJSON['Places'][1].IataCode;
+                newResult.from_country = resultsJSON['Places'][1].IataCode;
+                newResult.to_country = resultsJSON['Places'][0].IataCode;
                 newResult.cost = resultsJSON['Quotes'][item].MinPrice;
-                newResult.url = "http://example.org";
+                newResult.url = 'https://www.skyscanner.com/transport/flights/' + recForm['from'] + '/' + recForm['to'] + '/' + recForm['date'] + '/';
 
-                results.push(newResult);
+                if (newResult.cost <= recForm["budget"]) {
+                    results.push(newResult);
+                }
+
             }
 
             console.log(results);
@@ -181,8 +184,16 @@ app.get('/api/createpoll', function(req, res) {
 
     User.findOne({ email: decodedUser }, function (err, user) {
         Trip.findOne({user: user._id, past: false}, function(err, trip) {
+            console.log(trip)
             if (trip !== null) {
                 res.json(trip.poll);
+            }
+            else {
+                Trip.findOne({friend: user._id, past: false}, function(err, friendtrip) {
+                    if (friendtrip !== null) {
+                        res.json(friendtrip.poll);
+                    }
+                });
             }
         });
     });
@@ -195,11 +206,32 @@ app.post('/api/createpoll', function (req, res) {
     User.findOne({email: decodedUser}, function(err, user) {
         Trip.findOne({user: user._id, past: false}, function(err, currtrip) {
 
+            if (err) console.log(err);
+
             if (!currtrip) {
-                return res.send("notrip");
+                Trip.findOne({friend: user._id, past: false}, function(err, trip) {
+                    const poll = {
+                        name: req.body.name,
+                        date: req.body.date,
+                        message: req.body.message,
+                        data: req.body.data,
+                        trip: trip._id
+                    }
+    
+                    new Poll(poll).save(function(err, result) {
+                        if (err) console.log(err);
+                        else {
+                            Trip.update({user: trip.user, past: false}, {$push: {poll: result}}, function(err, poll) {
+                                if (err) console.log(err);
+                                else {
+                                    console.log("poll saved to trip!");
+                                }
+                            });
+                        }
+                    });
+                });
             }
             
-            if (err) console.log(err);
             else {
                 const poll = {
                     name: req.body.name,
@@ -430,27 +462,31 @@ app.post("/api/currenttrip", (req, res) => {
 
     User.findOne({email: decodedUser}, function(err, user) {
 
-        let newtrip = {}
-        console.log(req.body.name);
-        if (req.body.name !== undefined) {
-            newtrip = {
-                name: req.body.name,
-                todo: req.body.todo,
-                user: user._id
-            }
-        }
-
-        else {
-            newtrip = {
-                todo: req.body.todo,
-                user: user._id
-            }
-        }
-
         Trip.findOne({user: user._id, past: false} , function(err, trip) {
-            const userId = {user: user._id};
+            let userId = {};
+            let newtrip = {}
+            console.log(req.body.name);
+            if (req.body.name !== undefined) {
+                newtrip = {
+                    name: req.body.name,
+                    todo: req.body.todo
+                }
+            }
 
-            Trip.update({user: user._id, past: false}, {$set: newtrip}, function(err, updated) {
+            else {
+                newtrip = {
+                    todo: req.body.todo
+                }
+            }
+            if (trip !== null) {
+                userId = {user: user._id, past: false};
+            }
+
+            else {
+                userId = {friend: user._id, past: false}
+            }
+
+            Trip.update(userId, {$set: newtrip}, function(err, updated) {
                 if (err) console.log(err);
                 else {
                     // link to User Schema
@@ -531,6 +567,7 @@ app.post('/api/newtrip', (req, res) => {
             name: req.body.name,
             todo: req.body.todo,
             user: user._id,
+            friend: [user._id],
             past: false
         }
 
@@ -629,29 +666,35 @@ app.get('/api/viewfriendscurrenttrip', (req, res) => {
 
     userHash = req.header('Authorization').slice(4);
     decodedUser = jwt.verify(userHash, jwtSecret.secret).id;
-
-    User.findOne({ email: decodedUser}, function (err, user) {
-
+    User.findOne({ email: decodedUser }, function (err, user) {
         Trip.findOne({user: user._id, past: false}, function(err, trip) {
             if (err) {
                 console.log(err);
             }
-
-            if (trip) {return res.json(trip.friend);}
-            else {return res.json();}
-
-            
+            if (trip) {
+                return res.json(trip.friend)}
+            else {
+                Trip.findOne({friend: user._id, past: false}, function(err, newtrip) {
+                    if (newtrip) {
+                        Trip.findOne({user: newtrip.user, past: false}, function(err, owner) {
+                            return res.json(owner.friend);
+                        }).populate("friend");
+                    }
+                });
+            }     
         }).populate("friend");
     });
 });
 
-app.post('/api/addfriendscurrenttrip', (req, res, next) => {
+app.post('/api/adduserscurrenttrip', (req, res, next) => {
     recForm = req.body;
     userHash = req.header('Authorization').slice(4);
     decodedUser = jwt.verify(userHash, jwtSecret.secret).id;
 
     User.findOne({ email: decodedUser }, function (err, user) {
         Trip.findOne({user: user._id, past: false}, function(err, trip) {
+
+            console.log("recForm", recForm)
 
             let allEmails = recForm.map(a => a.value);
             console.log(allEmails);
@@ -738,14 +781,20 @@ app.get('/api/itinerary', function (req, res) {
 
     User.findOne({ email: decodedUser }, function (err, user) {
         Trip.findOne({user: user._id, past: false}, function(err, trip) {
-
+            console.log(trip);
             if (!trip) {
-                return res.json([]);
+                Trip.findOne({friend: user._id, past: false}, function(err, trip) {
+                    Itin.find({user: trip.user, trip: trip._id}, function(err, itin) {
+                        res.json(itin);
+                    });
+                });
             }
-            Itin.find({user: user._id, trip: trip._id}, function(err, itin) {
+            else {
+                Itin.find({user: user._id, trip: trip._id}, function(err, itin) {
                 console.log('itinerary sent!');
                 res.json(itin);
-            });
+                });
+            }
         })
     });
 });
@@ -789,27 +838,60 @@ app.post('/api/itinerary', function (req, res) {
     });
 });
 
+function validateEmail(email) {
+    const re = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    return re.test(String(email).toLowerCase());
+}
+
 // Edit Profile Routes 
 //This will send a get request for the EditProfile page and lay the groundwork for updating the user's data
 app.post('/api/EditProfile', (req, res, next) => {
 
-    res = {
-        
-        /*
-        Without a database setup it is hard to actually change the User's data,
-        but this will happen here in a fashion similar to this
-        await db.collection('User').updateOne{ 
-            {
-                $set: {'email': req.body.newEmail},
-                $set: {'password' :req.body.newPW}
-            }
-        }
-        */
-    }
-    console.log('User profile updated')
-        .catch(err => next(err))
+    let formData = req.body;
 
+    const userHash = req.header('Authorization').slice(4);
+    const decodedUser = jwt.verify(userHash, jwtSecret.secret).id;
+
+    User.findOne({email: decodedUser}, function(err, user) {
+
+
+        if (!user) {
+            return res.send("fail");
+        } else {
+            if (validateEmail(formData.email)) {
+                user.email = formData.email;
+                console.log(user.email)
+
+                user.save(function(err, result) {
+                    if (err) console.log(err);
+                    console.log('User profile updated');
+                    return res.status(200).send("success");
+                });
+            } else {
+                return res.send("fail");
+            }
+        } 
+    });
 });
+
+
+    // res = {
+        
+    //     /*
+    //     Without a database setup it is hard to actually change the User's data,
+    //     but this will happen here in a fashion similar to this
+    //     await db.collection('User').updateOne{ 
+    //         {
+    //             $set: {'email': req.body.newEmail},
+    //             $set: {'password' :req.body.newPW}
+    //         }
+    //     }
+    //     */
+    // }
+//     console.log('User profile updated')
+//         .catch(err => next(err))
+
+// });
 
 
 /*

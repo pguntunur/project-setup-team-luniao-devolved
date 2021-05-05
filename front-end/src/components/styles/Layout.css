@@ -19,15 +19,30 @@ h3 {
 }
 
 div #basic-navbar-nav .nav-link:hover {
-    color: #fff;
+    color: #ED9b40;
 }
 
 .btn-primary, .btn-primary:hover, .btn-primary:active, .btn-primary:visited {
     background-color: #ED9b40 !important;
     border: crimson;
+    margin : 2px;
+    height : 40px;
     
 } 
 
 #navbarlogo {
+    width: 300px;
+}
+
+#back-cpoll {
+    padding-left: 73%;
     padding-top: 0;
+}
+
+.form-group {
+    width : 100%;
+}
+
+.ItineraryBody {
+    margin-top: 20px;
 }

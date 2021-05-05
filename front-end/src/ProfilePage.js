@@ -78,12 +78,12 @@ function ProfilePage(){
 
 
     return(
-        <div classname = "ProfilePage">
-            <header classname = "Profile-header">
+        <div >
+            <header >
                 
                 <h3> {user["fullname"]}'s Profile</h3>
 
-                <img class="img-responsive" src="https://my.api.mockaroo.com/users.json?key=4e1c2150" class="img-circle"></img>
+                {/* <img class="img-responsive" src="https://my.api.mockaroo.com/users.json?key=4e1c2150" class="img-circle"></img> */}
                 
                 {/* replace with fullname when we get that working */}
                 <h2>
@@ -107,9 +107,9 @@ function ProfilePage(){
                 </div> */}
             </header>
 
-            <CardColumns>
+            <CardColumns class="profilecards">
             {posts.map((post, index) => 
-                <Card border="primary">
+                <Card class="indiv-card">
                     <Card.Body>
                         <Card.Title>
                             {post.title}
